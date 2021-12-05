@@ -1,148 +1,269 @@
-
+section .data
+    matrixTagCommon dd 1
+    matrixTagDiagonal dd 2
+    matrixTagTriangular dd 3
 section .text
+    global ShakerSort
+    global Average
 
-extern memcpy
+ShakerSort:
+    push rbp
+    mov rbp, rsp
 
-strlen:
-    ; Адрес сообщения уже загружен в rdi
-    mov rcx, -1     ; ecx должен быть < 0
-    xor al, al      ; конечный симврл = 0
-    cld             ; направление обхода от начала к концу
-    repne   scasb   ; while(msg[rdi]) != al) {rdi++, rcx--}
-    neg rcx
-    sub rcx, 2      ; ecx = length(msg)
-    mov rax, rcx
+    push rbx
+    push rcx
+    push rdx
+
+    mov ebx, [rdi]
+    mov r15d, [rdi]
+    dec r15d
+    lea rcx, [rdi + 8]
+
+xor r8d, r8d
+sortOuterLoop:
+    mov edx, r8d
+    inc edx
+    lea r12, [rcx + 16]
+
+    push rdi
+    mov rdi, rcx
+    call Average
+    movsd xmm3, xmm0
+    pop rdi
+
+sortInnerLoop:
+    push rdi
+    mov rdi, r12
+    call Average
+    movsd xmm4, xmm0
+    pop rdi
+
+    comisd xmm3, xmm4
+    ja swap
+    jmp afterSwap
+
+swap:
+
+    mov r13, [r12]
+    mov r14, [r12 + 8]
+
+    ;[r12]<-rcx
+    mov r9, [rcx]
+    mov [r12], r9
+    mov r9, [rcx + 8]
+    mov [r12 + 8], r9
+
+    ;rcx<-copy of r12(r13, r14)
+    mov [rcx], r13
+    mov [rcx + 8], r14
+
+    ; recalculation of container[i] average
+    push rdi
+    mov rdi, rcx
+    call Average
+    movsd xmm3, xmm0
+    pop rdi
+
+
+afterSwap:
+    inc edx
+    add r12, 16
+    cmp edx, ebx
+    jl sortInnerLoop
+
+;sortInnerLoopEnd
+
+    inc r8d
+    add rcx, 16
+    cmp r8d, r15d
+    jl sortOuterLoop
+
+;sortOuterLoop end
+
+    pop rcx
+    pop rbx
+    pop rdx
+
+    leave
     ret
 
-;double CompareValue(void *l) {
-;    int len = strlen((char*)l);
-;    return (double) *(int*)(l + nameSize) / len;
-;}
-global CompareValue
-CompareValue:
-    push    rbp
-    mov     rbp, rsp
-    sub     rsp, 12; двиагаем stack pointer на 12 вниз
-    mov     [rbp - 8], rdi; сохраняем l
-    call    strlen
-    mov     [rbp - 12], eax; сохраняем длину  
-    mov     rax, [rbp - 8]; записываем l
-    cvtsi2sd        xmm0, [rax + 30]; берем creation_year и переводим в double
-    cvtsi2sd        xmm1, [rbp - 12]; берем длину и переводим в double
-    divsd   xmm0, xmm1; делим
-    add     rsp, 12; возвращаем обратно stack pointer
-    pop     rbp
+Average: ;average will be stored in xmm0
+    ; INPUT
+    ; Matrix *matrixCommon stored in rdi
+    push rbp
+    mov rbp, rsp
+
+    push rbx
+    push rcx
+
+    mov ebx, [rdi] ; ebx = matrix.tag
+
+    mov ecx, [matrixTagCommon]
+    cmp ecx, ebx
+    je AverageCommonCall
+    jmp check2
+
+AverageCommonCall:
+    call AverageCommon
+    pop rcx
+    pop rbx
+    leave
     ret
 
-; void ShellSort(void *c, int len)
-;     for (int d = len / 2; d > 0; d /= 2)
-;         for (int i = d; i < len; i++)
-;             for (int j = i; j >= d && CompareValue(c + j * languageSize + intSize) < CompareValue(c + (j - d) * languageSize + intSize); j -= d) {
-;                 void *tmp[languageSize];
-;                 memcpy(tmp, c + j * languageSize, languageSize);
-;                 memcpy(c + j * languageSize, c + (j - d) * (languageSize), languageSize);
-;                 memcpy(c + (j - d) * (languageSize), tmp, languageSize);
-;             }
-global ShellSort
-ShellSort:
-        push    rbp
-        mov     rbp, rsp
-        sub     rsp, 64; двигаем стек для хранения переменных
-        mov     [rbp - 8], rdi; сохраняем l
-        mov     [rbp - 12], esi; сохраняем len
-        mov     eax, [rbp - 12]
-        mov     ecx, 2
-        cdq     ; расширяем eax для деления
-        idiv    ecx
-        mov     [rbp - 16], eax; сохраняем d
-.outer_loop:                                ; =>This Loop Header: Depth=1
-        cmp     dword [rbp - 16], 0; если d <= 0
-        jle     .leave_outer_cycle; заканчиваем
-        mov     eax, [rbp - 16]
-        mov     [rbp - 20], eax; сохраняем i
-.inner_loop:
-        mov     eax, [rbp - 20]
-        cmp     eax, [rbp - 12]; если i >= d
-        jge     .step_outer_loop
-        mov     eax, [rbp - 20]
-        mov     [rbp - 24], eax; j = i
-.inner_inner_loop:
-        mov     eax, [rbp - 24]; j
-        cmp     eax, [rbp - 16]; если j < d
-        jl      .step_inner_loop
-        mov     rdi, [rbp - 8]; кладем в первый аргумент l
-        imul    eax, [rbp - 24], 50; j * language_size
-        cdqe
-        add     rdi, rax; c + j * language_size
-        add     rdi, 4;  c + j * language_size + intSize
-        call    CompareValue
-        movsd   [rbp - 32], xmm0; сохраним CompareValue(c + j * language_size + intSize)
-        mov     rdi, [rbp - 8]; делаем все то же самое для c + (j - d) * language_size + intSize
-        mov     eax, [rbp - 24]
-        sub     eax, [rbp - 16]
-        imul    eax, eax, 50
-        cdqe
-        add     rdi, rax
-        add     rdi, 4
-        call    CompareValue
-        movsd   [rbp - 40], xmm0; сохраним CompareValue(c + (j - d) * language_size + intSize)
-        movsd   xmm0, [rbp - 32]
-        ucomisd xmm0, [rbp - 40]; если cv1 < cv2
-        jb      .swap; меняем местами элементы
-        jmp     .step_inner_loop; иначе начинаем заново
-.swap:
-        mov     [rbp - 48], rsp; запомним место под tmp
-        mov     rdi, rsp; первый аргумент - tmp
-        add     rdi, -400
-        mov     [rbp - 56], rdi
-        mov     rsp, rdi
-        mov     rsi, [rbp - 8]; c
-        imul    eax, [rbp - 24], 50; j * languageSize
-        cdqe
-        add     rsi, rax; второй аргумент - c + j * languageSize
-        mov     edx, 50; третий аргумент - languageSize
-        call    memcpy; memcpy(tmp, c + j * languageSize, languageSize)
-        mov     rdi, [rbp - 8]; c
-        imul    eax, [rbp - 24], 50; j * languageSize
-        cdqe
-        add     rdi, rax ; первый аргумет - c + j * languageSize
-        mov     rsi, [rbp - 8]; аналогичное вычисление c + (j - d) * (languageSize)
-        mov     eax, [rbp - 24]
-        sub     eax, [rbp - 16]
-        imul    eax, eax, 50
-        cdqe
-        add     rsi, rax; второй аргумент - c + (j - d) * (languageSize)
-        mov     edx, 50; третий аргумент - languageSize
-        call    memcpy; memcpy(c + j * languageSize, c + (j - d) * (languageSize), languageSize)
-        mov     rsi, [rbp - 56]; полностью аналогичный вызов memcpy(c + (j - d) * (languageSize), tmp, languageSize);
-        mov     rdi, [rbp - 8]
-        mov     eax, [rbp - 24]
-        sub     eax, [rbp - 16]
-        imul    eax, eax, 50
-        cdqe
-        add     rdi, rax
-        mov     edx, 50
-        call    memcpy; memcpy(c + (j - d) * (languageSize), tmp, languageSize);
-.inner_inner_loop_step:        
-        mov     ecx, [rbp - 16]; d
-        mov     eax, [rbp - 24]; j
-        sub     eax, ecx; j - d
-        mov     [rbp - 24], eax; j = j - d;
-        mov     rsp, [rbp - 48]; возвращаем стек обратно
-        jmp     .inner_inner_loop
-.step_inner_loop:
-        mov     eax, [rbp - 20]; i
-        inc     eax; i + 1
-        mov     [rbp - 20], eax; i = i + 1
-        jmp     .inner_loop
-.step_outer_loop:
-        mov     eax, [rbp - 16]; d
-        mov     ecx, 2
-        cdq
-        idiv    ecx ; d / 2
-        mov     [rbp - 16], eax; d /= 2;
-        jmp     .outer_loop
-.leave_outer_cycle:
-        mov     rsp, rbp
-        pop     rbp
-        ret
+check2:
+    mov ecx, [matrixTagDiagonal]
+    cmp ecx, ebx
+    je AverageDiagonalCall
+    jmp check3
+
+AverageDiagonalCall:
+    call AverageDiagonal
+    pop rcx
+    pop rbx
+    leave
+    ret
+
+check3:
+    mov ecx, [matrixTagTriangular]
+    cmp ecx, ebx
+    je averageTriangularCall
+    jmp averageEnd
+
+AverageTriangularCall:
+    call AverageTriangular
+    pop rcx
+    pop rbx
+    leave
+    ret
+
+AverageEnd:
+
+    pop rcx
+    pop rbx
+    leave
+    ret
+
+AverageCommon: ; average will be stored in xmm0
+    ; INPUT
+    ; Matrix *matrixCommon stored in rdi
+    push rbp
+    mov rbp, rsp
+
+    push rbx
+    push rdx
+    push r12
+
+    xorps xmm1, xmm1
+    mov ebx, [rdi + 4] ; ebx = matrix.size
+    mov rdx, [rdi + 8] ; rdx = matrix.ptr
+    mov rdx, [rdx] ; rdx = matrix.ptr.data*
+
+    xor ecx, ecx
+
+loopOuter:
+    xor eax, eax
+    mov r12, [rdx]
+
+loopInner:
+    addsd xmm1, [r12]
+    add r12, 8
+    inc eax
+    cmp eax, ebx
+    jl loopInner
+
+;loopInner end
+    add rdx, 8
+    inc ecx
+    cmp ecx, ebx
+    jl loopOuter
+;loopOuter end
+
+    cvtsi2sd xmm2, ebx
+    divsd xmm1, xmm2
+    divsd xmm1, xmm2
+    movsd xmm0, xmm1
+
+    pop r12
+    pop rdx
+    pop rbx
+
+    leave
+    ret
+
+AverageDiagonal: ; average will be stored in xmm0
+    ; INPUT
+    ; Matrix *matrixCommon stored in rdi
+    push rbp
+    mov rbp, rsp
+
+    push rbx
+    push rdx
+
+    xorps xmm1, xmm1
+    mov ebx, [rdi + 4] ; ebx = matrix.size
+    mov rdx, [rdi + 8] ; rdx = matrix.ptr
+    mov rdx, [rdx] ; rdx = matrix.ptr.data
+
+    xor eax, eax
+
+loop1:
+    addsd xmm1, [rdx]
+    add rdx, 8
+    inc eax
+    cmp eax, ebx
+    jl loop1
+    ;loop 1 end
+
+    cvtsi2sd xmm2, ebx
+    divsd xmm1, xmm2
+    divsd xmm1, xmm2
+    movsd xmm0, xmm1
+
+    pop rdx
+    pop rbx
+    leave
+    ret
+
+AverageTriangular: ; average will be stored in xmm0
+    ; INPUT
+    ; Matrix *matrixCommon stored in rdi
+    push rbp
+    mov rbp, rsp
+
+    push rbx
+    push rdx
+    push rcx
+
+    xorps xmm1, xmm1
+    mov ebx, [rdi + 4] ; ebx = matrix.size
+    mov rdx, [rdi + 8] ; rdx = matrix.ptr
+    mov rdx, [rdx] ; rdx = matrix.ptr.data
+
+    mov eax, ebx
+    inc ebx
+    push rdx
+    mul ebx ; rdx:rax = eax * ebx
+    pop rdx
+    dec ebx
+    shr eax, 1 ; now eax = (matrix.size * (matrix.size + 1)) / 2
+
+    xor ecx, ecx
+
+loop2:
+    addsd xmm1, [rdx]
+    add rdx, 8
+    inc ecx
+    cmp ecx, eax
+    jl loop2
+    ;loop 2 end
+
+    cvtsi2sd xmm2, ebx
+    divsd xmm1, xmm2
+    divsd xmm1, xmm2
+    movsd xmm0, xmm1
+
+    pop rcx
+    pop rdx
+    pop rbx
+    leave
+    ret
